@@ -688,12 +688,16 @@ def measure_kv_cache_blocks(
     )
     num_blocks = kv_cache.blocks_within(kv_cache_bytes)
     # Torch may grow into what stays free once the cache is extended, less the
-    # memory kept for multimodal IPC and for allocations outside torch.
+    # memory kept for multimodal IPC and for allocations outside torch, and
+    # less what was free at startup but outside the requested budget. Without
+    # that last term torch could grow past gpu_memory_utilization into memory
+    # the budget leaves to others: on a unified-memory device, the CPU's.
     left_free = (
         free_memory
         - (kv_cache.physical_bytes_for(num_blocks) - kv_cache.physical_bytes)
         - (available - kv_cache_bytes)
         - KV_CACHE_NON_TORCH_RESERVE_BYTES
+        - max(init_free_memory - requested_memory, 0)
     )
     torch_memory_limit = torch.accelerator.memory_reserved(device) + max(left_free, 0)
     kv_cache.set_torch_memory_limit(torch_memory_limit)
